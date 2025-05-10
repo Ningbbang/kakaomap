@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Kakao Map
+        </title>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+    <body>
+        <div id="control">
+            <p>
+                <button id="first" onClick="first()">◀◀</button>
+                <button id="prev" onClick="prev()">◀</button>
+                <input type='number' id='number' value=1>
+                <button id='next' onClick="next()">▶</button>
+                <button id="last" onClick="last()">▶▶</button>
+                <button id="dn_coords" onClick="download_coords()" style="margin-left:50px;">좌표다운로드</button>
+            </p>
+            <p>
+                <label for="code">CODE</label><input type="text" id="code" size="6">
+                <label for="person">성명</label><input type="text" id="person" size="6">
+                <label for="home">자택</label><input type="text" id="home">
+                <label for="office">사업장</label><input type="text" id="office">
+                <label for="work">외근지</label><input type="text" id="work">
+            </p>
+        </div>
+        <div id="map" style="width:900px;height:600px;margin:5px"></div>
+        <div id="output"></div>
+        <div id="search_address">
+            <p>
+                <label for="address">주소</label>
+                <input type="text" id="address" size="50">
+            </p>
+            <p>
+                <label for="lat">위도(Latitude)</label>
+                <input type="text" id="lat" disabled='true' size="10">
+                <label for="lng">경도(Longitude)</label>
+                <input type="text" id="lng" disabled='true' size="10">
+                <button onClick="searchAddress()">검색</button>
+            </p>
+        </div>
+    </body>
+    <script type="text/javascript" src="//dapi.kakao.com/v2/maps/sdk.js?appkey=72b4fdf2c632fa77112c4f1b0f99fb98&libraries=services,clusterer,drawing"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script>
+        window.xlsxData = [];
+        let markers = [];
+        var officeData = new Map;
+        var workData = new Map;
+
+        // map creation //
+        var container = document.getElementById('map'); //지도를 담을 영역의 DOM 레퍼런스
+        var options = {
+            center: new kakao.maps.LatLng(37.1256, 127.0827), //지도의 중심좌표.
+            level: 6
+        };
+
+        var map = new kakao.maps.Map(container, options); //지도 생성 및 객체 리턴
+        var geocoder = new kakao.maps.services.Geocoder();
+        
+        var imageSize = new kakao.maps.Size(50, 50), imageOption = {offset: new kakao.maps.Point(18, 45)};
+        var homeMarkerImage = new kakao.maps.MarkerImage('home_marker.png', imageSize, imageOption);
+        var officeMarkerImage = new kakao.maps.MarkerImage('office_marker.png', imageSize, imageOption);
+        var workMarkerImage = new kakao.maps.MarkerImage('work_marker.png', imageSize, imageOption);
+
+        // search address function //
+        function searchAddress(){
+            const address = document.getElementById('address').value
+            document.getElementById('lat').value = '';
+            document.getElementById('lng').value = '';
+
+            geocoder.addressSearch(address, function(result, status) {
+                if (status == kakao.maps.services.Status.OK) {
+                    const lat = result[0].y;
+                    const lng = result[0].x;
+                    
+                    document.getElementById('lat').value = lat;
+                    document.getElementById('lng').value = lng;
+                    };
+            });
+        };
+        function first(){
+            const number = document.getElementById('number');
+            number.value = 1;
+            loadData(1);
+        };
+        function last(){
+            const number = document.getElementById('number');
+            number.value = xlsxData.length - 1;
+            loadData(xlsxData.length - 1);
+        };
+        function prev(){
+            const number = document.getElementById('number');
+            const current = parseInt(number.value);
+            if (current > 1) {
+                number.value = current - 1
+                loadData(current - 1);
+            };
+        };
+        function next(){
+            const number = document.getElementById('number');
+            const current = parseInt(number.value);
+            if (current < (xlsxData.length - 1)) {
+                number.value = current + 1
+                loadData(current + 1);
+            };
+        };
+        
+        async function getCoords(addr) {
+            return new Promise((resolve, reject) => {
+                const geocoder = new kakao.maps.services.Geocoder();
+                geocoder.addressSearch(addr, function(result, status) {
+                    if (status === kakao.maps.services.Status.OK) {
+                        resolve({ lat: result[0].y, lng: result[0].x});
+                    } else {
+                        resolve({lat:'', lng:''});
+                    }
+                });
+            });
+        }
+        
+        function download_coords(){
+
+            const data = [['code', 'name', 'home_addr', 'home_lat', 'home_lng',
+                        'office_addr', 'office_lat', 'office_lng',
+                        'work_addr', 'work_lat', 'work_lng']];
+
+            xlsxData.forEach(row=> {
+                const code = row[1];
+                const name = row[2];
+                const home_addr = row[3];
+                const office_addr = row[4];
+                const work_addr = row[5];
+                var home_lat = ''; home_lng = '';
+                var office_lat = ''; office_lng = '';
+                var work_lat = ''; work_lng = '';
+
+                const geocoder = new kakao.maps.services.Geocoder();
+                geocoder.addressSearch(home_addr, async function(result, status) {
+                    if (status == kakao.maps.services.Status.OK) {
+                        home_lat = await result[0].y;
+                        home_lng = await result[0].x;
+                    };
+                });
+                geocoder.addressSearch(office_addr, async function(result, status) {
+                    if (status == kakao.maps.services.Status.OK) {
+                        office_lat = await result[0].y;
+                        office_lng = await result[0].x;
+                    };
+                });
+                geocoder.addressSearch(work_addr, async function(result, status) {
+                    if (status == kakao.maps.services.Status.OK) {
+                        work_lat = await result[0].y;
+                        work_lng = await result[0].x;
+                    };
+                });
+
+                const input_data = [code, name, home_addr, home_lat, home_lng,
+                                    office_addr, office_lat, office_lng,
+                                    work_addr, work_lat, work_lng];
+                data.push(input_data);
+            });
+
+            const worksheet = XLSX.utils.aoa_to_sheet(data);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, 'coords');
+            XLSX.writeFile(workbook, 'coords.xlsx');
+        };
+
+        async function loadData(current){
+            var home_coords = {};
+            var office_coords = {};
+            var work_coords = {};
+
+            code.value = xlsxData[current][1];
+            person.value = xlsxData[current][2];
+            home_addr = xlsxData[current][3];
+            office_addr = xlsxData[current][4];
+            work_addr = xlsxData[current][5];
+
+            home.value = home_addr;
+            office.value = office_addr;
+            work.value = work_addr;
+            
+            function getCoordsFromAddress(addr){
+                return new Promise((resolve, reject) => {
+                    const geocoder = new kakao.maps.services.Geocoder();
+
+                    geocoder.addressSearch(addr, function (result, status) {
+                        if (status == kakao.maps.services.Status.OK) {
+                            resolve({
+                                lat: result[0].y,
+                                lng: result[0].x
+                            });
+                        } else {
+                            reject('Geocoding failed: ' + status)
+                        }
+                    });
+                });
+            }
+
+            try {
+                const home_coords = await getCoordsFromAddress(home_addr);
+                const office_coords = await getCoordsFromAddress(office_addr);
+                const work_coords = await getCoordsFromAddress(work_addr);
+
+                markers.forEach(marker => marker.setMap(null));
+                markers = [];
+
+                const positions = [
+                    {title:'자택', coords: new kakao.maps.LatLng(home_coords['lat'], home_coords['lng']), image: homeMarkerImage},
+                    {title:'사업장', coords: new kakao.maps.LatLng(office_coords['lat'], office_coords['lng']), image: officeMarkerImage},
+                    {title:'외근지', coords: new kakao.maps.LatLng(work_coords['lat'], work_coords['lng']), image: workMarkerImage},
+                ];
+
+                const bounds = new kakao.maps.LatLngBounds();
+
+                positions.forEach(pos => {
+                    const marker = new kakao.maps.Marker({
+                        map: map,
+                        position: pos.coords,
+                        title: pos.title,
+                        image: pos.image
+                    });
+                    markers.push(marker);
+                    bounds.extend(pos.coords);
+                });
+                map.setBounds(bounds);
+            } catch (error) {
+                console.error(error);
+            }
+            
+        };
+
+        async function getData(){
+            try {
+                const response = await fetch('address_data.xlsx');
+                const arrayBuffer = await response.arrayBuffer();
+                const workbook = XLSX.read(arrayBuffer, {type: 'array'});
+                const sheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[sheetName];
+                xlsxData = XLSX.utils.sheet_to_json(worksheet, {header: 1});
+                loadData(1);
+            } catch(error) {
+                document.getElementById('output').textContent = 'Error loading XLSX: ' + error;
+            };
+        };
+        getData();
+
+        async function getOfficeData(){
+            try {
+                const response = await fetch('office_data.xlsx');
+                const arrayBuffer = await response.arrayBuffer();
+
+                const workbook = XLSX.read(arrayBuffer, {type: 'array'});
+                const sheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[sheetName];
+                const jsonData = XLSX.utils.sheet_to_json(worksheet, {header: 1});
+                jsonData.forEach(row => {
+                    const key = row[0];
+                    const value = row.slice(1);
+                    officeData.set(key, value)
+                });
+            } catch(error) {
+                document.getElementById('output').textContent = 'Error loading XLSX: ' + error;
+            };
+        };
+        getOfficeData();
+
+        async function getWorkData(){
+            try {
+                const response = await fetch('work_data.xlsx');
+                const arrayBuffer = await response.arrayBuffer();
+
+                const workbook = XLSX.read(arrayBuffer, {type: 'array'});
+                const sheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[sheetName];
+                const jsonData = XLSX.utils.sheet_to_json(worksheet, {header: 1});
+                jsonData.forEach(row => {
+                    const key = row[0];
+                    const value = row.slice(1);
+                    workData.set(key, value)
+                });
+            } catch(error) {
+                document.getElementById('output').textContent = 'Error loading XLSX: ' + error;
+            };
+        };
+        getWorkData();
+
+    </script>
+</html>
